@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:confetti/confetti.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -52,7 +53,7 @@ extension ExerciseTypeExtension on ExerciseType {
       case ExerciseType.lunge:
         return Icons.directions_walk;
       case ExerciseType.dumbbell:
-        return Icons.sports_gymnastics;
+        return Icons.fitness_center;
     }
   }
 
@@ -79,6 +80,19 @@ extension ExerciseTypeExtension on ExerciseType {
         return '전신이 보이게 서세요';
       case ExerciseType.dumbbell:
         return '전신이 보이게 서세요';
+    }
+  }
+
+  String get imagePath {
+    switch (this) {
+      case ExerciseType.squat:
+        return 'assets/images/squat.png';
+      case ExerciseType.pushup:
+        return 'assets/images/pushup.png';
+      case ExerciseType.lunge:
+        return 'assets/images/lunge.png';
+      case ExerciseType.dumbbell:
+        return 'assets/images/dumbbell.png';
     }
   }
 }
@@ -146,7 +160,7 @@ class ExerciseSelectionScreen extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => ExerciseCounterScreen(
+                            builder: (context) => ExerciseGoalScreen(
                               cameras: cameras,
                               exerciseType: exercise,
                             ),
@@ -197,10 +211,21 @@ class _ExerciseCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              exercise.icon,
-              size: 60,
-              color: Colors.white,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                exercise.imagePath,
+                width: 70,
+                height: 70,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Icon(
+                    exercise.icon,
+                    size: 60,
+                    color: Colors.white,
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 15),
             Text(
@@ -218,15 +243,296 @@ class _ExerciseCard extends StatelessWidget {
   }
 }
 
+// 할당량 설정 화면
+class ExerciseGoalScreen extends StatefulWidget {
+  final List<CameraDescription> cameras;
+  final ExerciseType exerciseType;
+
+  const ExerciseGoalScreen({
+    super.key,
+    required this.cameras,
+    required this.exerciseType,
+  });
+
+  @override
+  State<ExerciseGoalScreen> createState() => _ExerciseGoalScreenState();
+}
+
+class _ExerciseGoalScreenState extends State<ExerciseGoalScreen> {
+  int targetCount = 20;
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.text = targetCount.toString();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _incrementCount() {
+    setState(() {
+      targetCount++;
+      _controller.text = targetCount.toString();
+    });
+  }
+
+  void _decrementCount() {
+    setState(() {
+      if (targetCount > 1) {
+        targetCount--;
+        _controller.text = targetCount.toString();
+      }
+    });
+  }
+
+  void _showNumberInput() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final dialogController = TextEditingController(text: targetCount.toString());
+        return AlertDialog(
+          backgroundColor: const Color(0xFF16213e),
+          title: const Text(
+            '목표 횟수 입력',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: TextField(
+            controller: dialogController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white, fontSize: 24),
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: const Color(0xFF1a1a2e),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('취소', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () {
+                final value = int.tryParse(dialogController.text);
+                if (value != null && value > 0) {
+                  setState(() {
+                    targetCount = value;
+                    _controller.text = targetCount.toString();
+                  });
+                }
+                Navigator.pop(context);
+              },
+              child: const Text('확인', style: TextStyle(color: Colors.blue)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1a1a2e),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // 상단 바
+            Padding(
+              padding: const EdgeInsets.all(15),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.arrow_back, color: Colors.white),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    widget.exerciseType.name,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: widget.exerciseType.color,
+                    ),
+                  ),
+                  const Spacer(),
+                  const SizedBox(width: 44), // 균형을 위한 공간
+                ],
+              ),
+            ),
+            // 메인 콘텐츠
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    '목표 횟수를 설정하세요',
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  const SizedBox(height: 50),
+                  // 카운터 컨트롤
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // 감소 버튼
+                      GestureDetector(
+                        onTap: _decrementCount,
+                        child: Container(
+                          width: 60,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16213e),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.remove,
+                              color: Colors.white,
+                              size: 30,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 30),
+                      // 숫자 표시 (클릭하여 직접 입력)
+                      GestureDetector(
+                        onTap: _showNumberInput,
+                        child: Container(
+                          width: 150,
+                          height: 150,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: widget.exerciseType.color,
+                              width: 5,
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$targetCount',
+                              style: const TextStyle(
+                                fontSize: 48,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 30),
+                      // 증가 버튼
+                      GestureDetector(
+                        onTap: _incrementCount,
+                        child: Container(
+                          width: 60,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF16213e),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.add,
+                              color: Colors.white,
+                              size: 30,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // 시작 버튼
+            Padding(
+              padding: const EdgeInsets.all(30),
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ExerciseCounterScreen(
+                        cameras: widget.cameras,
+                        exerciseType: widget.exerciseType,
+                        targetCount: targetCount,
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        widget.exerciseType.color,
+                        widget.exerciseType.color.withValues(alpha: 0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.exerciseType.color.withValues(alpha: 0.4),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '시작하기',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // 운동 카운터 화면
 class ExerciseCounterScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
   final ExerciseType exerciseType;
+  final int targetCount;
 
   const ExerciseCounterScreen({
     super.key,
     required this.cameras,
     required this.exerciseType,
+    required this.targetCount,
   });
 
   @override
@@ -352,6 +658,25 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
       _speak(newMessage);
     }
   }
+
+  // 목표 달성 시 호출
+  void _onGoalReached() {
+    // 카메라 스트림 중지
+    controller?.stopImageStream();
+    
+    // 축하 페이지로 이동
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ExerciseCompleteScreen(
+          cameras: widget.cameras,
+          exerciseType: widget.exerciseType,
+          completedCount: exerciseCount,
+        ),
+      ),
+    );
+  }
+
   // 전원 끄기 함수
   @override
   void dispose() {
@@ -453,6 +778,11 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
             poseHoldStartTime = null;
             holdProgress = 0.0;
             _updateStatusMessage();
+            
+            // 목표 달성 체크
+            if (exerciseCount >= widget.targetCount) {
+              _onGoalReached();
+            }
           }
         }
         // 자세가 벗어나면 타이머 리셋
@@ -1171,5 +1501,248 @@ class ExerciseAnimationPainter extends CustomPainter {
     return oldDelegate.animationValue != animationValue ||
         oldDelegate.currentState != currentState ||
         oldDelegate.phase != phase;
+  }
+}
+
+// 운동 완료 축하 화면
+class ExerciseCompleteScreen extends StatefulWidget {
+  final List<CameraDescription> cameras;
+  final ExerciseType exerciseType;
+  final int completedCount;
+
+  const ExerciseCompleteScreen({
+    super.key,
+    required this.cameras,
+    required this.exerciseType,
+    required this.completedCount,
+  });
+
+  @override
+  State<ExerciseCompleteScreen> createState() => _ExerciseCompleteScreenState();
+}
+
+class _ExerciseCompleteScreenState extends State<ExerciseCompleteScreen> {
+  late ConfettiController _confettiController;
+
+  @override
+  void initState() {
+    super.initState();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 5));
+    // 화면 진입 시 자동으로 폭죽 시작
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _confettiController.play();
+    });
+  }
+
+  @override
+  void dispose() {
+    _confettiController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1a1a2e),
+      body: Stack(
+        children: [
+          // 메인 콘텐츠
+          SafeArea(
+            child: Column(
+              children: [
+                const SizedBox(height: 100),
+                // 축하 메시지
+                const Text(
+                  '🎉 축하합니다! 🎉',
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 30),
+                Text(
+                  '할당된 운동을 완료하였습니다!',
+                  style: TextStyle(
+                    fontSize: 22,
+                    color: widget.exerciseType.color,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 50),
+                // 완료 정보
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  padding: const EdgeInsets.all(30),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16213e),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: widget.exerciseType.color.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          widget.exerciseType.imagePath,
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              widget.exerciseType.icon,
+                              size: 80,
+                              color: widget.exerciseType.color,
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        widget.exerciseType.name,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '${widget.completedCount}회 완료!',
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: widget.exerciseType.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                // 다른 운동하기 버튼
+                Padding(
+                  padding: const EdgeInsets.all(30),
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ExerciseSelectionScreen(
+                            cameras: widget.cameras,
+                          ),
+                        ),
+                        (route) => false,
+                      );
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            widget.exerciseType.color,
+                            widget.exerciseType.color.withValues(alpha: 0.7),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: widget.exerciseType.color.withValues(alpha: 0.4),
+                            blurRadius: 15,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          '다른 운동하기',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 폭죽 효과 - 왼쪽
+          Align(
+            alignment: Alignment.topLeft,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: -math.pi / 4, // 오른쪽 아래 방향
+              maxBlastForce: 20,
+              minBlastForce: 10,
+              emissionFrequency: 0.05,
+              numberOfParticles: 20,
+              gravity: 0.1,
+              shouldLoop: false,
+              colors: const [
+                Colors.red,
+                Colors.blue,
+                Colors.green,
+                Colors.yellow,
+                Colors.purple,
+                Colors.orange,
+                Colors.pink,
+              ],
+            ),
+          ),
+          // 폭죽 효과 - 오른쪽
+          Align(
+            alignment: Alignment.topRight,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: -3 * math.pi / 4, // 왼쪽 아래 방향
+              maxBlastForce: 20,
+              minBlastForce: 10,
+              emissionFrequency: 0.05,
+              numberOfParticles: 20,
+              gravity: 0.1,
+              shouldLoop: false,
+              colors: const [
+                Colors.red,
+                Colors.blue,
+                Colors.green,
+                Colors.yellow,
+                Colors.purple,
+                Colors.orange,
+                Colors.pink,
+              ],
+            ),
+          ),
+          // 폭죽 효과 - 중앙 상단
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: math.pi / 2, // 아래 방향
+              maxBlastForce: 15,
+              minBlastForce: 5,
+              emissionFrequency: 0.03,
+              numberOfParticles: 30,
+              gravity: 0.05,
+              shouldLoop: false,
+              colors: const [
+                Colors.red,
+                Colors.blue,
+                Colors.green,
+                Colors.yellow,
+                Colors.purple,
+                Colors.orange,
+                Colors.pink,
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
