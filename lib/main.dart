@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -242,6 +243,10 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
   ExercisePhase phase = ExercisePhase.waitingForReady;
   String statusMessage = "";
 
+  // TTS
+  late FlutterTts flutterTts;
+  bool _isSpeaking = false;
+
   // 자세 유지 시간 체크용
   DateTime? poseHoldStartTime;
   static const Duration requiredHoldDuration = Duration(milliseconds: 1000);
@@ -254,6 +259,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
   @override
   void initState() {
     super.initState();
+    _initTts();
     _updateStatusMessage();
 
     // 애니메이션 설정 (2초 주기로 반복)
@@ -288,31 +294,68 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
       setState(() {});
     });
   }
+
+  // TTS 초기화
+  Future<void> _initTts() async {
+    flutterTts = FlutterTts();
+    await flutterTts.setLanguage('ko-KR');
+    await flutterTts.setSpeechRate(0.5);
+    await flutterTts.setVolume(1.0);
+    await flutterTts.setPitch(1.0);
+    
+    flutterTts.setStartHandler(() {
+      _isSpeaking = true;
+    });
+    
+    flutterTts.setCompletionHandler(() {
+      _isSpeaking = false;
+    });
+    
+    flutterTts.setErrorHandler((msg) {
+      _isSpeaking = false;
+    });
+  }
+
+  // TTS로 메시지 읍기
+  Future<void> _speak(String message) async {
+    if (_isSpeaking) {
+      await flutterTts.stop();
+    }
+    await flutterTts.speak(message);
+  }
+
   // 운동 메시지
   void _updateStatusMessage() {
+    String newMessage;
     if (phase == ExercisePhase.waitingForReady) {
-      statusMessage = widget.exerciseType.readyPoseDescription;
-      return;
+      newMessage = widget.exerciseType.readyPoseDescription;
+    } else {
+      switch (widget.exerciseType) {
+        case ExerciseType.squat:
+          newMessage = currentState == ExerciseState.down ? "올라오세요!" : "앉으세요!";
+          break;
+        case ExerciseType.pushup:
+          newMessage = currentState == ExerciseState.down ? "올라오세요!" : "내려가세요!";
+          break;
+        case ExerciseType.lunge:
+          newMessage = currentState == ExerciseState.down ? "올라오세요!" : "무릎을 굽히세요!";
+          break;
+        case ExerciseType.dumbbell:
+          newMessage = currentState == ExerciseState.up ? "들어올리세요!" : "내리세요!";
+          break;
+      }
     }
-
-    switch (widget.exerciseType) {
-      case ExerciseType.squat:
-        statusMessage = currentState == ExerciseState.down ? "올라오세요!" : "앉으세요!";
-        break;
-      case ExerciseType.pushup:
-        statusMessage = currentState == ExerciseState.down ? "올라오세요!" : "내려가세요!";
-        break;
-      case ExerciseType.lunge:
-        statusMessage = currentState == ExerciseState.down ? "올라오세요!" : "무릎을 굽히세요!";
-        break;
-      case ExerciseType.dumbbell:
-        statusMessage = currentState == ExerciseState.up ? "들어올리세요!" : "내리세요!";
-        break;
+    
+    // 메시지가 변경되었을 때만 TTS 실행
+    if (statusMessage != newMessage) {
+      statusMessage = newMessage;
+      _speak(newMessage);
     }
   }
   // 전원 끄기 함수
   @override
   void dispose() {
+    flutterTts.stop();
     _animationController.dispose();
     controller?.dispose();
     poseDetector.close();
