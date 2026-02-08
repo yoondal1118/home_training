@@ -71,13 +71,13 @@ extension ExerciseTypeExtension on ExerciseType {
   String get readyPoseDescription {
     switch (this) {
       case ExerciseType.squat:
-        return '똑바로 서세요';
+        return '전신이 보이게 서세요';
       case ExerciseType.pushup:
-        return '팔을 쭉 펴세요';
+        return '플랭크 자세를 취하세요';
       case ExerciseType.lunge:
-        return '똑바로 서세요';
+        return '전신이 보이게 서세요';
       case ExerciseType.dumbbell:
-        return '팔을 내리세요';
+        return '전신이 보이게 서세요';
     }
   }
 }
@@ -244,7 +244,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
 
   // 자세 유지 시간 체크용
   DateTime? poseHoldStartTime;
-  static const Duration requiredHoldDuration = Duration(milliseconds: 1500);
+  static const Duration requiredHoldDuration = Duration(milliseconds: 1000);
   double holdProgress = 0.0; // 0.0 ~ 1.0
 
   // 애니메이션 컨트롤러
@@ -264,29 +264,31 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
+    // 0 -> 1로 갔다가 1->0으로 돌아옴
     _animationController.repeat(reverse: true);
 
     // 카메라 초기화
     CameraLensDirection preferredDirection = CameraLensDirection.front;
-
+    // 전면 카메라 쓰라는 코드
     final camera = widget.cameras.firstWhere(
       (cam) => cam.lensDirection == preferredDirection,
       orElse: () => widget.cameras.first,
     );
-
+    // 카메라 화질 설정
     controller = CameraController(
       camera,
       ResolutionPreset.medium,
       enableAudio: false,
     );
-
+    
     controller?.initialize().then((_) {
+      // 화면이 꺼졌다면 중단
       if (!mounted) return;
       controller?.startImageStream((image) => processImage(image));
       setState(() {});
     });
   }
-
+  // 운동 메시지
   void _updateStatusMessage() {
     if (phase == ExercisePhase.waitingForReady) {
       statusMessage = widget.exerciseType.readyPoseDescription;
@@ -308,7 +310,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
         break;
     }
   }
-
+  // 전원 끄기 함수
   @override
   void dispose() {
     _animationController.dispose();
@@ -316,20 +318,21 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     poseDetector.close();
     super.dispose();
   }
-
+  // 카메라가 보내준 데이터를 AI가 이해할 수 있는 언어로 번역 & 분석결과를 가져오는 함수
   Future<void> processImage(CameraImage image) async {
     if (isBusy || controller == null) return;
+    // 분석중
     isBusy = true;
-
+    // inputImage : AI가 이해할 수 있는 형식의 이미지
     try {
       final inputImage = _inputImageFromCameraImage(image);
       if (inputImage == null) {
         isBusy = false;
         return;
       }
-
+      // AI 분석
       final poses = await poseDetector.processImage(inputImage);
-
+      // 사람이 보일 경우, 첫 번째 사람의 관절 정보를 가져와 판독
       if (poses.isNotEmpty) {
         final pose = poses.first;
         _processPose(pose);
@@ -418,10 +421,67 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     });
   }
 
+  // 관절의 신뢰도 체크 (likelihood 기준)
+  static const double _minLikelihood = 0.7;
+
+  // 전신 관절 확인 (서있는 자세용: 스쿼트, 런지, 아령)
+  bool _checkStandingFullBodyVisible(Pose pose) {
+    final requiredLandmarks = [
+      PoseLandmarkType.nose,
+      PoseLandmarkType.leftShoulder,
+      PoseLandmarkType.rightShoulder,
+      PoseLandmarkType.leftHip,
+      PoseLandmarkType.rightHip,
+      PoseLandmarkType.leftKnee,
+      PoseLandmarkType.rightKnee,
+      PoseLandmarkType.leftAnkle,
+      PoseLandmarkType.rightAnkle,
+    ];
+    
+    for (final landmarkType in requiredLandmarks) {
+      final landmark = pose.landmarks[landmarkType];
+      if (landmark == null || landmark.likelihood < _minLikelihood) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // 전신 관절 확인 (플랭크 자세용: 팔굽혀펴기)
+  bool _checkPlankFullBodyVisible(Pose pose) {
+    final requiredLandmarks = [
+      PoseLandmarkType.nose,
+      PoseLandmarkType.leftShoulder,
+      PoseLandmarkType.rightShoulder,
+      PoseLandmarkType.leftElbow,
+      PoseLandmarkType.rightElbow,
+      PoseLandmarkType.leftWrist,
+      PoseLandmarkType.rightWrist,
+      PoseLandmarkType.leftHip,
+      PoseLandmarkType.rightHip,
+      PoseLandmarkType.leftKnee,
+      PoseLandmarkType.rightKnee,
+      PoseLandmarkType.leftAnkle,
+      PoseLandmarkType.rightAnkle,
+    ];
+    
+    for (final landmarkType in requiredLandmarks) {
+      final landmark = pose.landmarks[landmarkType];
+      if (landmark == null || landmark.likelihood < _minLikelihood) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Map<String, double>? _getExerciseAngles(Pose pose) {
     switch (widget.exerciseType) {
       case ExerciseType.squat:
       case ExerciseType.lunge:
+        // 전신이 보이는지 먼저 확인
+        if (!_checkStandingFullBodyVisible(pose)) {
+          return null;
+        }
         final hip = pose.landmarks[PoseLandmarkType.leftHip];
         final knee = pose.landmarks[PoseLandmarkType.leftKnee];
         final ankle = pose.landmarks[PoseLandmarkType.leftAnkle];
@@ -438,7 +498,30 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
         return null;
 
       case ExerciseType.pushup:
+        // 플랭크 자세에서 전신이 보이는지 확인
+        if (!_checkPlankFullBodyVisible(pose)) {
+          return null;
+        }
+        final shoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+        final elbow = pose.landmarks[PoseLandmarkType.leftElbow];
+        final wrist = pose.landmarks[PoseLandmarkType.leftWrist];
+        if (shoulder != null && elbow != null && wrist != null) {
+          return {'current': _getAngle(shoulder, elbow, wrist)};
+        }
+        // 오른쪽도 체크
+        final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+        final rightElbow = pose.landmarks[PoseLandmarkType.rightElbow];
+        final rightWrist = pose.landmarks[PoseLandmarkType.rightWrist];
+        if (rightShoulder != null && rightElbow != null && rightWrist != null) {
+          return {'current': _getAngle(rightShoulder, rightElbow, rightWrist)};
+        }
+        return null;
+
       case ExerciseType.dumbbell:
+        // 전신이 보이는지 먼저 확인
+        if (!_checkStandingFullBodyVisible(pose)) {
+          return null;
+        }
         final shoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
         final elbow = pose.landmarks[PoseLandmarkType.leftElbow];
         final wrist = pose.landmarks[PoseLandmarkType.leftWrist];
@@ -456,6 +539,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     }
   }
 
+  // 준비 자세 체크
   bool _checkReadyPosition(double angle) {
     switch (widget.exerciseType) {
       case ExerciseType.squat:
@@ -467,7 +551,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
         return angle > 150; // 팔 내리고 있음
     }
   }
-
+  // 준비 완료되면 운동 시작
   bool _checkDownPosition(double angle) {
     switch (widget.exerciseType) {
       case ExerciseType.squat:
@@ -480,7 +564,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
         return angle < 70; // 팔 굽힘 (아령 들어올림)
     }
   }
-
+  // 카운트 되려면 다시 돌아와야 함
   bool _checkUpPosition(double angle) {
     switch (widget.exerciseType) {
       case ExerciseType.squat:
@@ -492,7 +576,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
         return angle > 150;
     }
   }
-
+  // 운동 각도 제기
   double _getAngle(PoseLandmark p1, PoseLandmark p2, PoseLandmark p3) {
     double angle = (math.atan2(p3.y - p2.y, p3.x - p2.x) -
             math.atan2(p1.y - p2.y, p1.x - p2.x)) *
@@ -508,10 +592,11 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
       (cam) => cam.lensDirection == CameraLensDirection.front,
       orElse: () => widget.cameras.first,
     );
-
+    // 카메라 센서가 얼마나 돌아가 있는지 체크
     final sensorOrientation = camera.sensorOrientation;
 
     InputImageRotation? rotation;
+    // 안드로이드
     if (defaultTargetPlatform == TargetPlatform.android) {
       var rotationCompensation = sensorOrientation;
       if (rotationCompensation == 0) {
@@ -523,12 +608,13 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
       } else if (rotationCompensation == 270) {
         rotation = InputImageRotation.rotation270deg;
       }
+    // 아이폰
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
       rotation = InputImageRotation.rotation0deg;
     }
 
     if (rotation == null) return null;
-
+    // 안드로이드 처리
     if (defaultTargetPlatform == TargetPlatform.android) {
       final nv21Bytes = _convertYUV420ToNV21(image);
 
@@ -542,7 +628,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
         ),
       );
     }
-
+    // 안드로이드 제외 다른 플랫폼
     final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) return null;
 
@@ -558,7 +644,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
       ),
     );
   }
-
+  // CPU가 가장 효율적으로 데이터를 읽을 수 있도록 메모리 레이아웃을 재배치
   Uint8List _convertYUV420ToNV21(CameraImage image) {
     final int width = image.width;
     final int height = image.height;
@@ -600,7 +686,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
 
     return nv21;
   }
-
+  // 운동 화면
   @override
   Widget build(BuildContext context) {
     if (controller == null || !controller!.value.isInitialized) {
@@ -618,7 +704,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
             Expanded(
               flex: 3,
               child: Container(
-                margin: const EdgeInsets.all(10),
+                margin: const EdgeInsets.all(8.0),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
@@ -662,7 +748,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
             Expanded(
               flex: 2,
               child: Container(
-                margin: const EdgeInsets.all(10),
+                margin: const EdgeInsets.all(8.0),
                 decoration: BoxDecoration(
                   color: const Color(0xFF16213e),
                   borderRadius: BorderRadius.circular(20),
@@ -701,7 +787,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
                   padding:
                       const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.8),
+                    color: Colors.red.withValues(alpha: 0.8),
                     borderRadius: BorderRadius.circular(30),
                   ),
                   child: const Text(
@@ -741,7 +827,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: widget.exerciseType.color.withOpacity(0.8),
+              color: widget.exerciseType.color.withValues(alpha: 0.8),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -757,7 +843,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.yellow.withOpacity(0.9),
+              color: Colors.yellow.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -908,30 +994,43 @@ class ExerciseAnimationPainter extends CustomPainter {
   void _drawPushup(Canvas canvas, double cx, double cy, double scale,
       double progress, Paint paint, Paint fillPaint) {
     // 팔굽혀펴기: 팔 폄 → 팔 굽힘 (옆에서 본 모습)
-    final bodyDrop = progress * 25 * scale;
+    // progress 0 = 팔 펴 (위), progress 1 = 팔 굽힘 (아래)
+    final bodyDrop = progress * 30 * scale;
 
     // 바닥 라인
+    final groundY = cy + 60 * scale;
     canvas.drawLine(
-        Offset(cx - 80 * scale, cy + 60 * scale),
-        Offset(cx + 80 * scale, cy + 60 * scale),
+        Offset(cx - 80 * scale, groundY),
+        Offset(cx + 80 * scale, groundY),
         paint..color = Colors.white38);
     paint.color = Colors.white;
 
-    // 몸통 (수평)
-    final bodyY = cy - 20 * scale + bodyDrop;
-    canvas.drawLine(Offset(cx - 40 * scale, bodyY), Offset(cx + 40 * scale, bodyY), paint);
+    // 몸통 위치 (수평으로 유지, 내려갈 때 bodyDrop만큼 내려감)
+    final bodyY = cy - 10 * scale + bodyDrop;
+    
+    // 머리 (오른쪽)
+    final headX = cx + 55 * scale;
+    canvas.drawCircle(Offset(headX, bodyY - 5 * scale), 12 * scale, fillPaint);
+    
+    // 몸통 (어깨에서 엉덩이까지)
+    final shoulderX = cx + 35 * scale;
+    final hipX = cx - 35 * scale;
+    canvas.drawLine(Offset(shoulderX, bodyY), Offset(hipX, bodyY), paint);
 
-    // 머리
-    canvas.drawCircle(Offset(cx + 50 * scale, bodyY), 12 * scale, fillPaint);
+    // 팔 (어깨에서 바닥으로) - 팔꿈치가 굽혀지는 모습
+    final handY = groundY;
+    final elbowBend = progress * 25 * scale; // 팔꿈치가 바깥으로 굽혀지는 정도
+    final elbowY = bodyY + (handY - bodyY) * 0.5; // 팔꿈치는 어깨와 손 중간
+    final elbowX = shoulderX + elbowBend; // 팔꿈치가 오른쪽으로 굽혀짐
+    
+    // 어깨 → 팔꿈치
+    canvas.drawLine(Offset(shoulderX, bodyY), Offset(elbowX, elbowY), paint);
+    // 팔꿈치 → 손 (손은 바닥에 고정)
+    canvas.drawLine(Offset(elbowX, elbowY), Offset(shoulderX, handY), paint);
 
-    // 팔 (앞쪽)
-    final elbowY = cy + 20 * scale;
-    final handY = cy + 55 * scale;
-    canvas.drawLine(Offset(cx - 30 * scale, bodyY), Offset(cx - 30 * scale, elbowY), paint);
-    canvas.drawLine(Offset(cx - 30 * scale, elbowY), Offset(cx - 30 * scale, handY), paint);
-
-    // 다리
-    canvas.drawLine(Offset(cx - 40 * scale, bodyY), Offset(cx - 60 * scale, cy + 55 * scale), paint);
+    // 다리 (엉덩이에서 발까지)
+    final footX = cx - 70 * scale;
+    canvas.drawLine(Offset(hipX, bodyY), Offset(footX, groundY), paint);
   }
 
   void _drawLunge(Canvas canvas, double cx, double cy, double scale,
