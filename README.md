@@ -1,16 +1,6 @@
-# hello_world
+# 나만의 운동 비서
 
-A new Flutter project.
+해당 어플은 Google ML Kit Pose Detection API를 이용하여 실시간으로 관절의 상태를 체크해 운동여부를 판단하는 AI기반 운동 서비스 어플입니다.
 
-## Getting Started
+사용자는 2026년 02월 08일 기준 4개의 운동(스쿼트, 팔굽혀펴기, 런지, 아령) 중 선택하여 운동을 진행할 수 있으며, 추후 운동의 종류가 추가될 수 있습니다.
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.

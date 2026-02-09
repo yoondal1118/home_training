@@ -73,11 +73,11 @@ extension ExerciseTypeExtension on ExerciseType {
   String get readyPoseDescription {
     switch (this) {
       case ExerciseType.squat:
-        return '전신이 보이게 서세요';
+        return '측면을 보고 서세요';
       case ExerciseType.pushup:
-        return '플랭크 자세를 취하세요';
+        return '측면을 보고 플랭크 자세를 하세요';
       case ExerciseType.lunge:
-        return '전신이 보이게 서세요';
+        return '측면을 보고 서세요';
       case ExerciseType.dumbbell:
         return '전신이 보이게 서세요';
     }
@@ -555,7 +555,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
 
   // 자세 유지 시간 체크용
   DateTime? poseHoldStartTime;
-  static const Duration requiredHoldDuration = Duration(milliseconds: 1000);
+  static const Duration requiredHoldDuration = Duration(milliseconds: 500);
   double holdProgress = 0.0; // 0.0 ~ 1.0
 
   // 애니메이션 컨트롤러
@@ -566,7 +566,7 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
   void initState() {
     super.initState();
     _initTts();
-    _updateStatusMessage();
+    // _updateStatusMessage()는 _initTts() 완료 후 호출됨
 
     // 애니메이션 설정 (2초 주기로 반복)
     _animationController = AnimationController(
@@ -620,6 +620,11 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     flutterTts.setErrorHandler((msg) {
       _isSpeaking = false;
     });
+    
+    // TTS 초기화 완료 후 첫 메시지 재생
+    if (mounted) {
+      _updateStatusMessage();
+    }
   }
 
   // TTS로 메시지 읍기
@@ -795,9 +800,9 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
   }
 
   // 관절의 신뢰도 체크 (likelihood 기준)
-  static const double _minLikelihood = 0.7;
+  static const double _minLikelihood = 0.5; // 측면 인식을 위해 임계값 낮춤
 
-  // 전신 관절 확인 (서있는 자세용: 스쿼트, 런지, 아령)
+  // 전신 관절 확인 (서있는 자세용: 아령 - 정면)
   bool _checkStandingFullBodyVisible(Pose pose) {
     final requiredLandmarks = [
       PoseLandmarkType.nose,
@@ -820,78 +825,147 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     return true;
   }
 
-  // 전신 관절 확인 (플랭크 자세용: 팔굽혀펴기)
-  bool _checkPlankFullBodyVisible(Pose pose) {
-    final requiredLandmarks = [
-      PoseLandmarkType.nose,
+  // 측면 관절 확인 (스쿼트, 런지용 - 왼쪽 또는 오른쪽)
+  // 반환값: 'left', 'right', 또는 null (인식 실패)
+  String? _checkSideViewBodyVisible(Pose pose) {
+    // 왼쪽 측면 체크 (카메라에서 봤을 때 왼쪽 관절이 더 잘 보임)
+    final leftLandmarks = [
       PoseLandmarkType.leftShoulder,
-      PoseLandmarkType.rightShoulder,
-      PoseLandmarkType.leftElbow,
-      PoseLandmarkType.rightElbow,
-      PoseLandmarkType.leftWrist,
-      PoseLandmarkType.rightWrist,
       PoseLandmarkType.leftHip,
-      PoseLandmarkType.rightHip,
       PoseLandmarkType.leftKnee,
-      PoseLandmarkType.rightKnee,
       PoseLandmarkType.leftAnkle,
+    ];
+    
+    bool leftVisible = true;
+    for (final landmarkType in leftLandmarks) {
+      final landmark = pose.landmarks[landmarkType];
+      if (landmark == null || landmark.likelihood < _minLikelihood) {
+        leftVisible = false;
+        break;
+      }
+    }
+    if (leftVisible) return 'left';
+    
+    // 오른쪽 측면 체크
+    final rightLandmarks = [
+      PoseLandmarkType.rightShoulder,
+      PoseLandmarkType.rightHip,
+      PoseLandmarkType.rightKnee,
       PoseLandmarkType.rightAnkle,
     ];
     
-    for (final landmarkType in requiredLandmarks) {
+    bool rightVisible = true;
+    for (final landmarkType in rightLandmarks) {
       final landmark = pose.landmarks[landmarkType];
       if (landmark == null || landmark.likelihood < _minLikelihood) {
-        return false;
+        rightVisible = false;
+        break;
       }
     }
-    return true;
+    if (rightVisible) return 'right';
+    
+    return null;
+  }
+
+  // 팔굽혀펴기 측면 관절 확인 (왼쪽 또는 오른쪽)
+  // 반환값: 'left', 'right', 또는 null (인식 실패)
+  String? _checkPushupSideViewVisible(Pose pose) {
+    // 왼쪽 측면 체크
+    final leftLandmarks = [
+      PoseLandmarkType.leftShoulder,
+      PoseLandmarkType.leftElbow,
+      PoseLandmarkType.leftWrist,
+      PoseLandmarkType.leftHip,
+      PoseLandmarkType.leftAnkle,
+    ];
+    
+    bool leftVisible = true;
+    for (final landmarkType in leftLandmarks) {
+      final landmark = pose.landmarks[landmarkType];
+      if (landmark == null || landmark.likelihood < _minLikelihood) {
+        leftVisible = false;
+        break;
+      }
+    }
+    if (leftVisible) return 'left';
+    
+    // 오른쪽 측면 체크
+    final rightLandmarks = [
+      PoseLandmarkType.rightShoulder,
+      PoseLandmarkType.rightElbow,
+      PoseLandmarkType.rightWrist,
+      PoseLandmarkType.rightHip,
+      PoseLandmarkType.rightAnkle,
+    ];
+    
+    bool rightVisible = true;
+    for (final landmarkType in rightLandmarks) {
+      final landmark = pose.landmarks[landmarkType];
+      if (landmark == null || landmark.likelihood < _minLikelihood) {
+        rightVisible = false;
+        break;
+      }
+    }
+    if (rightVisible) return 'right';
+    
+    return null;
   }
 
   Map<String, double>? _getExerciseAngles(Pose pose) {
     switch (widget.exerciseType) {
       case ExerciseType.squat:
       case ExerciseType.lunge:
-        // 전신이 보이는지 먼저 확인
-        if (!_checkStandingFullBodyVisible(pose)) {
+        // 측면 인식 확인 (왼쪽 또는 오른쪽)
+        final side = _checkSideViewBodyVisible(pose);
+        if (side == null) {
           return null;
         }
-        final hip = pose.landmarks[PoseLandmarkType.leftHip];
-        final knee = pose.landmarks[PoseLandmarkType.leftKnee];
-        final ankle = pose.landmarks[PoseLandmarkType.leftAnkle];
-        if (hip != null && knee != null && ankle != null) {
-          return {'current': _getAngle(hip, knee, ankle)};
-        }
-        // 오른쪽도 체크
-        final rightHip = pose.landmarks[PoseLandmarkType.rightHip];
-        final rightKnee = pose.landmarks[PoseLandmarkType.rightKnee];
-        final rightAnkle = pose.landmarks[PoseLandmarkType.rightAnkle];
-        if (rightHip != null && rightKnee != null && rightAnkle != null) {
-          return {'current': _getAngle(rightHip, rightKnee, rightAnkle)};
+        
+        // 인식된 측면의 관절 사용
+        if (side == 'left') {
+          final hip = pose.landmarks[PoseLandmarkType.leftHip];
+          final knee = pose.landmarks[PoseLandmarkType.leftKnee];
+          final ankle = pose.landmarks[PoseLandmarkType.leftAnkle];
+          if (hip != null && knee != null && ankle != null) {
+            return {'current': _getAngle(hip, knee, ankle)};
+          }
+        } else {
+          final hip = pose.landmarks[PoseLandmarkType.rightHip];
+          final knee = pose.landmarks[PoseLandmarkType.rightKnee];
+          final ankle = pose.landmarks[PoseLandmarkType.rightAnkle];
+          if (hip != null && knee != null && ankle != null) {
+            return {'current': _getAngle(hip, knee, ankle)};
+          }
         }
         return null;
 
       case ExerciseType.pushup:
-        // 플랭크 자세에서 전신이 보이는지 확인
-        if (!_checkPlankFullBodyVisible(pose)) {
+        // 측면 인식 확인 (왼쪽 또는 오른쪽)
+        final pushupSide = _checkPushupSideViewVisible(pose);
+        if (pushupSide == null) {
           return null;
         }
-        final shoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
-        final elbow = pose.landmarks[PoseLandmarkType.leftElbow];
-        final wrist = pose.landmarks[PoseLandmarkType.leftWrist];
-        if (shoulder != null && elbow != null && wrist != null) {
-          return {'current': _getAngle(shoulder, elbow, wrist)};
-        }
-        // 오른쪽도 체크
-        final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
-        final rightElbow = pose.landmarks[PoseLandmarkType.rightElbow];
-        final rightWrist = pose.landmarks[PoseLandmarkType.rightWrist];
-        if (rightShoulder != null && rightElbow != null && rightWrist != null) {
-          return {'current': _getAngle(rightShoulder, rightElbow, rightWrist)};
+        
+        // 인식된 측면의 관절 사용 - 팔꿈치 각도 측정
+        if (pushupSide == 'left') {
+          final shoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+          final elbow = pose.landmarks[PoseLandmarkType.leftElbow];
+          final wrist = pose.landmarks[PoseLandmarkType.leftWrist];
+          if (shoulder != null && elbow != null && wrist != null) {
+            return {'current': _getAngle(shoulder, elbow, wrist)};
+          }
+        } else {
+          final shoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+          final elbow = pose.landmarks[PoseLandmarkType.rightElbow];
+          final wrist = pose.landmarks[PoseLandmarkType.rightWrist];
+          if (shoulder != null && elbow != null && wrist != null) {
+            return {'current': _getAngle(shoulder, elbow, wrist)};
+          }
         }
         return null;
 
       case ExerciseType.dumbbell:
-        // 전신이 보이는지 먼저 확인
+        // 전신이 보이는지 먼저 확인 (아령은 정면)
         if (!_checkStandingFullBodyVisible(pose)) {
           return null;
         }
@@ -917,9 +991,9 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     switch (widget.exerciseType) {
       case ExerciseType.squat:
       case ExerciseType.lunge:
-        return angle > 160; // 다리 펴고 서있음
+        return angle > 150; // 측면에서 다리 펴고 서있음 (조금 유연하게)
       case ExerciseType.pushup:
-        return angle > 160; // 팔 펴고 있음
+        return angle > 150; // 측면에서 팔 펴고 플랭크 자세
       case ExerciseType.dumbbell:
         return angle > 150; // 팔 내리고 있음
     }
@@ -928,11 +1002,11 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
   bool _checkDownPosition(double angle) {
     switch (widget.exerciseType) {
       case ExerciseType.squat:
-        return angle < 100; // 무릎 굽힘
+        return angle < 120; // 측면에서 무릎 굽힘 (더 유연하게)
       case ExerciseType.pushup:
-        return angle < 100; // 팔꿈치 굽힘
+        return angle < 110; // 측면에서 팔꿈치 굽힘
       case ExerciseType.lunge:
-        return angle < 110; // 무릎 굽힘
+        return angle < 130; // 측면에서 무릎 굽힘 (더 유연하게)
       case ExerciseType.dumbbell:
         return angle < 70; // 팔 굽힘 (아령 들어올림)
     }
@@ -942,9 +1016,9 @@ class _ExerciseCounterScreenState extends State<ExerciseCounterScreen>
     switch (widget.exerciseType) {
       case ExerciseType.squat:
       case ExerciseType.lunge:
-        return angle > 160;
+        return angle > 150; // 측면에서 다시 서있는 자세
       case ExerciseType.pushup:
-        return angle > 160;
+        return angle > 150; // 측면에서 팔 다시 펴기
       case ExerciseType.dumbbell:
         return angle > 150;
     }
